@@ -1,5 +1,7 @@
+
 const path = require('path');
 const webpack = require('webpack');
+const fs = require('fs');
 
 const documentResponse = `<!doctype html>
 <html lang="en">
@@ -15,6 +17,22 @@ const documentResponse = `<!doctype html>
     <script defer src="/assets/main.js"></script>
   </body>
 </html>`;
+
+class GenerateDeploymentPagePlugin {
+  apply(compiler) {
+    compiler.hooks.afterEmit.tap('GenerateDeploymentPagePlugin', (compilation) => {
+      if (compiler.options.mode === 'production') {
+        const outputPath = compiler.options.output.path;
+        fs.mkdirSync(outputPath, { recursive: true });
+        fs.writeFileSync(
+          path.join(outputPath, 'index.html'),
+          documentResponse,
+          'utf8'
+        );
+      }
+    });
+  }
+}
 
 module.exports = (env, argv) => ({
   mode: argv.mode || 'development',
@@ -41,28 +59,38 @@ module.exports = (env, argv) => ({
           },
         },
       },
-      { test: /\.css$/i, use: ['style-loader', 'css-loader'] },
+      {
+        test: /\.css$/i,
+        use: ['style-loader', 'css-loader'],
+      },
     ],
   },
   plugins: [
     new webpack.DefinePlugin({
-      'process.env.API_URL': JSON.stringify(process.env.API_URL || 'http://localhost:8080/api'),
+      'process.env.API_URL': JSON.stringify(
+        process.env.API_URL || 'http://localhost:8080/api'
+      ),
     }),
+    new GenerateDeploymentPagePlugin(),
   ],
   devServer: {
     port: 5173,
     hot: true,
     open: false,
     devMiddleware: { index: false },
-    setupMiddlewares(middlewares, devServer) {
+    setupMiddlewares(middlewares) {
       middlewares.unshift({
         name: 'janseva-in-memory-document',
         path: '/',
         middleware: (req, res, next) => {
           if (req.method !== 'GET') return next();
           const pathname = (req.url || '/').split('?')[0];
-          if (pathname.startsWith('/assets/') || pathname.startsWith('/webpack') ||
-              pathname.startsWith('/sockjs-node')) return next();
+          if (
+            pathname.startsWith('/assets/') ||
+            pathname.startsWith('/webpack') ||
+            pathname.startsWith('/sockjs-node')
+          ) return next();
+
           res.statusCode = 200;
           res.setHeader('Content-Type', 'text/html; charset=utf-8');
           res.end(documentResponse);
